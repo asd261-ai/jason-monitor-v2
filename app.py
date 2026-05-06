@@ -1,0 +1,190 @@
+# -*- coding: utf-8 -*-
+"""
+Taiwan Stock Tactical Monitor v2.0 - Optimized for Jason
+Emily (Gemini 3) 強化版
+"""
+
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from datetime import datetime, timedelta
+
+# =========================
+# 1. 核心參數與持股配置
+# =========================
+WATCHLIST = {
+    "8028.TW": "昇陽半導體",
+    "8086.TW": "宏捷科",
+    "3680.TW": "家登",
+    "6213.TW": "聯茂",
+    "2330.TW": "台積電",
+    "8069.TW": "元太",
+}
+
+# 預設持股 (Jason 可於介面即時修改)
+DEFAULT_POSITIONS = {
+    "8069.TW": {"shares": 262000, "cost": 0.0},
+}
+
+# =========================
+# 2. 數據分析引擎
+# =========================
+@st.cache_data(ttl=300)
+def fetch_data(ticker, period="1y"):
+    try:
+        df = yf.download(ticker, period=period, interval="1d", auto_adjust=True,
+                         progress=False)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        return df
+    except Exception as e:
+        return pd.DataFrame()
+
+def technical_analysis(df):
+    df = df.copy()
+    # 均線系統
+    for ma in [5, 10, 20, 60]:
+        df[f'MA{ma}'] = df['Close'].rolling(window=ma).mean()
+
+    # 布林通道
+    df['BB_Mid'] = df['Close'].rolling(window=20).mean()
+    df['BB_Std'] = df['Close'].rolling(window=20).std()
+    df['BB_Up'] = df['BB_Mid'] + (df['BB_Std'] * 2)
+    df['BB_Low'] = df['BB_Mid'] - (df['BB_Std'] * 2)
+
+    # RSI & MACD
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['RSI'] = 100 - (100 / (1 + rs))
+
+    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD'] = exp1 - exp2
+    df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    df['Hist'] = df['MACD'] - df['Signal']
+
+    return df
+
+# =========================
+# 3. 戰術評分邏輯
+# =========================
+def get_tactical_signal(df):
+    curr = df.iloc[-1]
+    prev = df.iloc[-2]
+
+    score = 0
+    msg = []
+
+    # 趨勢判定
+    if curr['Close'] > curr['MA20']: score += 2; msg.append("站上月線")
+    if curr['MA5'] > curr['MA20']: score += 1; msg.append("短均多頭排列")
+    if curr['Hist'] > prev['Hist']: score += 1; msg.append("MACD動能增強")
+
+    # 超買超賣
+    if curr['RSI'] > 75: score -= 1; msg.append("RSI過熱回檔風險")
+    elif curr['RSI'] < 30: score += 2; msg.append("超賣區具反彈契機")
+
+    # 壓力支撐
+    support = df['Low'].tail(20).min()
+    resistance = df['High'].tail(20).max()
+
+    status = "觀望"
+    if score >= 3: status = "強多"
+    elif score >= 1: status = "偏多"
+    elif score <= -2: status = "弱空"
+
+    return {
+        "score": score,
+        "status": status,
+        "reason": " | ".join(msg),
+        "support": round(support, 2),
+        "resistance": round(resistance, 2),
+        "stop_loss": round(support * 0.97, 2)
+    }
+
+# =========================
+# 4. Streamlit UI 佈局
+# =========================
+st.set_page_config(page_title="Jason's Tactical Monitor v2.0",
+                   layout="wide")
+
+st.title("🛡️ Jason 台股最強戰術儀表板")
+st.markdown(f"**最後更新時間：** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+# 側邊欄：持股管理
+with st.sidebar:
+    st.header("💼 持股水位設定")
+    positions = {}
+    for ticker, name in WATCHLIST.items():
+        st.subheader(f"{name} ({ticker})")
+        sh = st.number_input(f"股數", value=DEFAULT_POSITIONS.get(ticker,
+                             {}).get("shares", 0), key=f"sh_{ticker}")
+        ct = st.number_input(f"成本", value=DEFAULT_POSITIONS.get(ticker,
+                             {}).get("cost", 0.0), key=f"ct_{ticker}")
+        positions[ticker] = {"shares": sh, "cost": ct}
+
+# 核心總覽
+summary_data = []
+for ticker, name in WATCHLIST.items():
+    raw_df = fetch_data(ticker)
+    if raw_df.empty: continue
+
+    df = technical_analysis(raw_df)
+    sig = get_tactical_signal(df)
+
+    curr_p = df.iloc[-1]['Close']
+    pnl = (curr_p - positions[ticker]['cost']) * positions[ticker]['shares'] if \
+        positions[ticker]['cost'] > 0 else 0
+
+    summary_data.append({
+        "代碼": ticker,
+        "名稱": name,
+        "現價": round(curr_p, 2),
+        "評分": sig['score'],
+        "趨勢": sig['status'],
+        "支撐": sig['support'],
+        "壓力": sig['resistance'],
+        "預估損益": int(pnl),
+        "戰術理由": sig['reason']
+    })
+
+df_sum = pd.DataFrame(summary_data)
+st.dataframe(df_sum.style.background_gradient(subset=['評分'],
+             cmap='RdYlGn'), use_container_width=True)
+
+# 詳細圖表分析
+selected_stock = st.selectbox("🔍 選擇詳細分析對象",
+                              options=list(WATCHLIST.keys()),
+                              format_func=lambda x: f"{x} {WATCHLIST[x]}")
+
+if selected_stock:
+    detail_df = technical_analysis(fetch_data(selected_stock)).tail(120)
+
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        vertical_spacing=0.05, row_heights=[0.7, 0.3])
+
+    # K線與均線
+    fig.add_trace(go.Candlestick(x=detail_df.index, open=detail_df['Open'],
+                                 high=detail_df['High'], low=detail_df['Low'],
+                                 close=detail_df['Close'], name="K線"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=detail_df.index, y=detail_df['MA20'],
+                             line=dict(color='orange', width=1.5), name="20MA"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=detail_df.index, y=detail_df['BB_Up'],
+                             line=dict(dash='dash', color='gray'), name="布林上軌"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=detail_df.index, y=detail_df['BB_Low'],
+                             line=dict(dash='dash', color='gray'), name="布林下軌"), row=1, col=1)
+
+    # MACD
+    fig.add_trace(go.Bar(x=detail_df.index, y=detail_df['Hist'],
+                         name="MACD柱狀體"), row=2, col=1)
+
+    fig.update_layout(height=600, xaxis_rangeslider_visible=False,
+                      template="plotly_white")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.success("Emily 的戰術建議：對於 8069 元太，請密切關注其在電子紙零售應用的動能，若回測月線不破即是 Jason 佈局良機。")
