@@ -166,16 +166,29 @@ with st.sidebar:
     # 合併完整清單
     full_watchlist = {**WATCHLIST, **st.session_state.extra_tickers}
 
+    # 從 URL 讀取已儲存的監控清單
+    saved_selected = st.query_params.get("selected", "")
+    saved_list = saved_selected.split(",") if saved_selected else list(full_watchlist.keys())
+    # 過濾掉已不存在的 ticker
+    saved_list = [t for t in saved_list if t in full_watchlist]
+    if not saved_list:
+        saved_list = list(full_watchlist.keys())
+
     # 股票選擇
     st.header("📋 股票選擇")
     selected_tickers = st.multiselect(
         "選擇要監控的股票",
         options=list(full_watchlist.keys()),
-        default=list(full_watchlist.keys()),
+        default=saved_list,
         format_func=lambda x: f"{full_watchlist[x]} ({x})"
     )
     if not selected_tickers:
         selected_tickers = list(full_watchlist.keys())
+
+    save_list_btn = st.button("💾 儲存監控清單", use_container_width=True)
+    if save_list_btn:
+        st.query_params["selected"] = ",".join(selected_tickers)
+        st.success("✅ 監控清單已儲存！")
 
     st.divider()
 
