@@ -101,13 +101,29 @@ st.title("🛡️ Jason 台股最強戰術儀表板")
 st.caption(f"更新時間：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 with st.sidebar:
+    # 股票選擇
+    st.header("📋 股票選擇")
+    selected_tickers = st.multiselect(
+        "選擇要監控的股票",
+        options=list(WATCHLIST.keys()),
+        default=list(WATCHLIST.keys()),
+        format_func=lambda x: f"{WATCHLIST[x]} ({x})"
+    )
+    if not selected_tickers:
+        selected_tickers = list(WATCHLIST.keys())
+
+    st.divider()
+
+    # 持股水位
     st.header("💼 持股水位設定")
     positions = {}
-    for ticker, name in WATCHLIST.items():
+    for ticker in selected_tickers:
+        name = WATCHLIST[ticker]
         with st.expander(f"{name} ({ticker})"):
             sh = st.number_input("股數", value=int(DEFAULT_POSITIONS.get(ticker, {}).get("shares", 0)), key=f"sh_{ticker}", step=1000)
             ct = st.number_input("成本", value=float(DEFAULT_POSITIONS.get(ticker, {}).get("cost", 0.0)), key=f"ct_{ticker}")
         positions[ticker] = {"shares": sh, "cost": ct}
+
     st.divider()
     st.caption("⏱️ 每 5 分鐘自動更新")
     manual_refresh = st.button("🔄 立即更新", type="primary", use_container_width=True)
@@ -117,9 +133,10 @@ if manual_refresh:
     fetch_data.clear()
 
 # 自動載入（含進度條）
+active_watchlist = {t: WATCHLIST[t] for t in selected_tickers}
 summary_data, failed = [], []
 progress = st.progress(0, text="載入資料中...")
-for i, (ticker, name) in enumerate(WATCHLIST.items()):
+for i, (ticker, name) in enumerate(active_watchlist.items()):
     progress.progress((i + 1) / len(WATCHLIST), text=f"載入 {name}...")
     raw = fetch_data(ticker)
     if raw.empty:
@@ -138,8 +155,6 @@ for i, (ticker, name) in enumerate(WATCHLIST.items()):
         "戰術理由": sig['reason']
     })
 progress.empty()
-failed       = st.session_state.get("failed", [])
-
 if failed:
     st.warning(f"資料載入失敗：{', '.join(failed)}")
 
@@ -156,7 +171,7 @@ except Exception:
 
 valid_tickers = [r["代碼"] for r in summary_data]
 selected = st.selectbox("🔍 選擇詳細分析對象", options=valid_tickers,
-                        format_func=lambda x: f"{x} {WATCHLIST[x]}")
+                        format_func=lambda x: f"{x} {active_watchlist[x]}")
 
 if selected:
     raw = fetch_data(selected)
