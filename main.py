@@ -133,6 +133,69 @@ def get_signal(df):
     return {"score": score, "status": status, "reason": " | ".join(msg),
             "support": round(support, 2), "resistance": round(resistance, 2)}
 
+def generate_analysis(df, sig):
+    curr = df.iloc[-1]
+    prev = df.iloc[-2] if len(df) >= 2 else curr
+    prev5 = df.iloc[-5] if len(df) >= 5 else df.iloc[0]
+
+    price   = scalar(curr['Close'])
+    ma20    = scalar(curr['MA20'])
+    ma5     = scalar(curr['MA5'])
+    rsi     = scalar(curr['RSI'])
+    hist    = scalar(curr['Hist'])
+    macd    = scalar(curr['MACD'])
+    sig_ln  = scalar(curr['Signal'])
+    bb_up   = scalar(curr['BB_Up'])
+    bb_low  = scalar(curr['BB_Low'])
+    ph      = scalar(prev['Hist'])
+    chg5    = (price - scalar(prev5['Close'])) / scalar(prev5['Close']) * 100
+
+    # 目前的現況
+    s = []
+    s.append(f"現價 **{price:.1f}**，" + ("站於月線之上" if price > ma20 else f"跌破月線（{ma20:.1f}）"))
+    if rsi >= 75:   s.append(f"RSI {rsi:.0f} 進入超買區")
+    elif rsi >= 60: s.append(f"RSI {rsi:.0f} 偏強")
+    elif rsi <= 30: s.append(f"RSI {rsi:.0f} 超賣反彈機會")
+    elif rsi <= 45: s.append(f"RSI {rsi:.0f} 偏弱")
+    else:           s.append(f"RSI {rsi:.0f} 中性")
+    if hist > 0 and hist > ph:    s.append("MACD 柱擴張、動能向上")
+    elif hist > 0 and hist <= ph: s.append("MACD 正值但動能略縮")
+    elif hist < 0 and hist < ph:  s.append("MACD 負向擴張，空頭動能強")
+    else:                         s.append("MACD 負值但收縮中")
+    if price > bb_up:   s.append("突破布林上軌")
+    elif price < bb_low: s.append("跌破布林下軌（超賣）")
+    s.append(f"近 5 日 {chg5:+.1f}%")
+    situation = "；".join(s) + "。"
+
+    # 未來的趨勢
+    score = sig['score']
+    t = []
+    if score >= 3:   t.append("技術面強多，趨勢向上")
+    elif score >= 1: t.append("技術面偏多，但尚未全面確立")
+    elif score == 0: t.append("技術面中性，方向未明")
+    elif score >= -1: t.append("技術面偏弱，留意下行風險")
+    else:            t.append("技術面疲弱，空頭訊號明顯")
+    t.append("短均仍位於月線上方" if ma5 > ma20 else "短均已跌破月線")
+    t.append(f"近期支撐 **{sig['support']:.1f}**，壓力 **{sig['resistance']:.1f}**")
+    if macd > sig_ln and hist > 0:   t.append("MACD 黃金交叉維持")
+    elif macd < sig_ln and hist < 0: t.append("MACD 死亡交叉持續")
+    trend = "；".join(t) + "。"
+
+    # 操作的建議
+    sup, res = sig['support'], sig['resistance']
+    if score >= 3:
+        rec = f"📈 **強多格局**：可考慮逢回（支撐 {sup:.1f} 附近）分批布局，目標壓力 {res:.1f}，停損設月線下方。"
+    elif score >= 1:
+        rec = f"📊 **偏多觀察**：技術偏多但力道有限，建議輕倉試水，等待 RSI 回落至 50 附近或 MACD 確認再加碼。支撐 {sup:.1f}。"
+    elif score == 0:
+        rec = f"⏸️ **觀望為主**：訊號中性，建議持幣等待方向確認，注意 {sup:.1f} 支撐是否守住。"
+    elif score >= -1:
+        rec = f"⚠️ **偏空留意**：技術偏弱，持股留意 {sup:.1f} 支撐，跌破可考慮減碼。"
+    else:
+        rec = f"🔴 **弱空格局**：技術疲弱，建議觀望或減碼，反彈至 {res:.1f} 附近可考慮出清。"
+
+    return situation, trend, rec
+
 # =========================
 # 3. UI
 # =========================
@@ -348,7 +411,9 @@ selected = st.selectbox("🔍 選擇詳細分析對象", options=valid_tickers,
 if selected:
     raw = fetch_data(selected)
     if not raw.empty:
-        detail = technical_analysis(raw).tail(120)
+        full_detail = technical_analysis(raw)
+        sig_detail  = get_signal(full_detail)
+        detail = full_detail.tail(120)
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                             vertical_spacing=0.05, row_heights=[0.7, 0.3])
         fig.add_trace(go.Candlestick(x=detail.index, open=detail['Open'],
@@ -362,3 +427,21 @@ if selected:
         fig.add_trace(go.Bar(x=detail.index, y=detail['Hist'], name="MACD Hist"), row=2, col=1)
         fig.update_layout(height=600, xaxis_rangeslider_visible=False, template="plotly_white")
         st.plotly_chart(fig, use_container_width=True)
+
+        situation, trend, recommendation = generate_analysis(full_detail, sig_detail)
+        st.subheader("📋 技術分析摘要")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown("**🔍 目前的現況**")
+            st.info(situation)
+        with c2:
+            st.markdown("**📈 未來的趨勢**")
+            if sig_detail['score'] >= 1:
+                st.success(trend)
+            elif sig_detail['score'] <= -1:
+                st.error(trend)
+            else:
+                st.warning(trend)
+        with c3:
+            st.markdown("**💡 操作的建議**")
+            st.info(recommendation)
