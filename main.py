@@ -101,16 +101,64 @@ st.title("🛡️ Jason 台股最強戰術儀表板")
 st.caption(f"更新時間：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 with st.sidebar:
+    # 動態新增股票
+    st.header("➕ 新增股票")
+    if "extra_tickers" not in st.session_state:
+        st.session_state.extra_tickers = {}  # {ticker: name}
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        new_ticker = st.text_input("代碼", placeholder="e.g. 2454.TW", label_visibility="collapsed")
+    with col2:
+        add_btn = st.button("新增", use_container_width=True)
+
+    if add_btn and new_ticker:
+        t = new_ticker.strip().upper()
+        if t not in WATCHLIST and t not in st.session_state.extra_tickers:
+            # 驗證 ticker
+            test = yf.download(t, period="3d", progress=False)
+            if isinstance(test.columns, pd.MultiIndex):
+                test = test.droplevel(1, axis=1)
+            if not test.empty:
+                # 嘗試取得股票名稱
+                try:
+                    info = yf.Ticker(t).info
+                    name = info.get("shortName") or info.get("longName") or t
+                except Exception:
+                    name = t
+                st.session_state.extra_tickers[t] = name
+                fetch_data.clear()
+                st.success(f"已新增 {name} ({t})")
+            else:
+                st.error(f"找不到 {t}，請確認代碼格式（台股加 .TW 或 .TWO）")
+        elif t in WATCHLIST or t in st.session_state.extra_tickers:
+            st.warning("此股票已在清單中")
+
+    # 顯示已新增的股票，可刪除
+    if st.session_state.extra_tickers:
+        for t, n in list(st.session_state.extra_tickers.items()):
+            c1, c2 = st.columns([3, 1])
+            c1.caption(f"{n} ({t})")
+            if c2.button("✕", key=f"del_{t}"):
+                del st.session_state.extra_tickers[t]
+                fetch_data.clear()
+                st.rerun()
+
+    st.divider()
+
+    # 合併完整清單
+    full_watchlist = {**WATCHLIST, **st.session_state.extra_tickers}
+
     # 股票選擇
     st.header("📋 股票選擇")
     selected_tickers = st.multiselect(
         "選擇要監控的股票",
-        options=list(WATCHLIST.keys()),
-        default=list(WATCHLIST.keys()),
-        format_func=lambda x: f"{WATCHLIST[x]} ({x})"
+        options=list(full_watchlist.keys()),
+        default=list(full_watchlist.keys()),
+        format_func=lambda x: f"{full_watchlist[x]} ({x})"
     )
     if not selected_tickers:
-        selected_tickers = list(WATCHLIST.keys())
+        selected_tickers = list(full_watchlist.keys())
 
     st.divider()
 
@@ -118,7 +166,7 @@ with st.sidebar:
     st.header("💼 持股水位設定")
     positions = {}
     for ticker in selected_tickers:
-        name = WATCHLIST[ticker]
+        name = full_watchlist[ticker]
         with st.expander(f"{name} ({ticker})"):
             sh = st.number_input("股數", value=int(DEFAULT_POSITIONS.get(ticker, {}).get("shares", 0)), key=f"sh_{ticker}", step=1000)
             ct = st.number_input("成本", value=float(DEFAULT_POSITIONS.get(ticker, {}).get("cost", 0.0)), key=f"ct_{ticker}")
@@ -133,7 +181,7 @@ if manual_refresh:
     fetch_data.clear()
 
 # 自動載入（含進度條）
-active_watchlist = {t: WATCHLIST[t] for t in selected_tickers}
+active_watchlist = {t: full_watchlist[t] for t in selected_tickers}
 summary_data, failed = [], []
 progress = st.progress(0, text="載入資料中...")
 for i, (ticker, name) in enumerate(active_watchlist.items()):
