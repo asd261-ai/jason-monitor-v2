@@ -390,14 +390,18 @@ for i, (ticker, name) in enumerate(active_watchlist.items()):
         continue
     df  = technical_analysis(raw)
     sig = get_signal(df)
-    curr_p = scalar(df.iloc[-1]['Close'])
-    pnl = (curr_p - positions[ticker]['cost']) * positions[ticker]['shares'] \
-          if positions[ticker]['cost'] > 0 else 0
+    curr_p     = scalar(df.iloc[-1]['Close'])
+    today_open = scalar(df.iloc[-1]['Open'])
+    sh = positions[ticker]['shares']
+    ct = positions[ticker]['cost']
+    pnl       = int((curr_p - ct) * sh) if ct > 0 else 0
+    today_pnl = int((curr_p - today_open) * sh) if sh > 0 else 0
     summary_data.append({
         "代碼": ticker, "名稱": name,
         "現價": round(curr_p, 2), "評分": sig['score'],
         "趨勢": sig['status'], "支撐": sig['support'],
-        "壓力": sig['resistance'], "預估損益": int(pnl),
+        "壓力": sig['resistance'],
+        "今日損益": today_pnl, "預估損益": pnl,
         "戰術理由": sig['reason']
     })
 progress.empty()
@@ -414,6 +418,23 @@ try:
     st.dataframe(styled, use_container_width=True)
 except Exception:
     st.dataframe(df_sum, use_container_width=True)
+
+# 損益合計列
+total_pnl   = sum(r['預估損益'] for r in summary_data)
+total_today = sum(r['今日損益'] for r in summary_data)
+tc1, tc2 = st.columns(2)
+tc1.metric(
+    "📅 今日損益合計",
+    f"{'+'if total_today>=0 else ''}{total_today:,} 元",
+    delta=f"{total_today:+,}" if total_today != 0 else None,
+    delta_color="normal"
+)
+tc2.metric(
+    "💰 總持倉損益合計",
+    f"{'+'if total_pnl>=0 else ''}{total_pnl:,} 元",
+    delta=f"{total_pnl:+,}" if total_pnl != 0 else None,
+    delta_color="normal"
+)
 
 # 儲存按鈕
 now_str = datetime.now().strftime("%Y-%m-%d_%H%M")
@@ -434,20 +455,6 @@ if selected:
     if not raw.empty:
         full_detail = technical_analysis(raw)
         sig_detail  = get_signal(full_detail)
-        detail = full_detail.tail(120)
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                            vertical_spacing=0.05, row_heights=[0.7, 0.3])
-        fig.add_trace(go.Candlestick(x=detail.index, open=detail['Open'],
-            high=detail['High'], low=detail['Low'], close=detail['Close'], name="K線"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=detail.index, y=detail['MA20'],
-            line=dict(color='orange', width=1.5), name="20MA"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=detail.index, y=detail['BB_Up'],
-            line=dict(dash='dash', color='gray'), name="布林上軌"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=detail.index, y=detail['BB_Low'],
-            line=dict(dash='dash', color='gray'), name="布林下軌"), row=1, col=1)
-        fig.add_trace(go.Bar(x=detail.index, y=detail['Hist'], name="MACD Hist"), row=2, col=1)
-        fig.update_layout(height=600, xaxis_rangeslider_visible=False, template="plotly_white")
-        st.plotly_chart(fig, use_container_width=True)
 
         situation, trend, recommendation = generate_analysis(full_detail, sig_detail)
         conf = confidence_score(full_detail, sig_detail)
@@ -494,3 +501,21 @@ if selected:
         with c3:
             st.markdown("**💡 操作的建議**")
             st.info(recommendation)
+
+        # 圖表放最下方
+        st.divider()
+        st.markdown(f"**📊 {active_watchlist[selected]} ({selected}) — 近 120 日 K 線**")
+        detail = full_detail.tail(120)
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                            vertical_spacing=0.05, row_heights=[0.7, 0.3])
+        fig.add_trace(go.Candlestick(x=detail.index, open=detail['Open'],
+            high=detail['High'], low=detail['Low'], close=detail['Close'], name="K線"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=detail.index, y=detail['MA20'],
+            line=dict(color='orange', width=1.5), name="20MA"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=detail.index, y=detail['BB_Up'],
+            line=dict(dash='dash', color='gray'), name="布林上軌"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=detail.index, y=detail['BB_Low'],
+            line=dict(dash='dash', color='gray'), name="布林下軌"), row=1, col=1)
+        fig.add_trace(go.Bar(x=detail.index, y=detail['Hist'], name="MACD Hist"), row=2, col=1)
+        fig.update_layout(height=600, xaxis_rangeslider_visible=False, template="plotly_white")
+        st.plotly_chart(fig, use_container_width=True)
