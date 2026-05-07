@@ -223,7 +223,7 @@ active_watchlist = {t: full_watchlist[t] for t in selected_tickers}
 summary_data, failed = [], []
 progress = st.progress(0, text="載入資料中...")
 for i, (ticker, name) in enumerate(active_watchlist.items()):
-    progress.progress((i + 1) / len(WATCHLIST), text=f"載入 {name}...")
+    progress.progress((i + 1) / len(active_watchlist), text=f"載入 {name}...")
     raw = fetch_data(ticker)
     if raw.empty:
         failed.append(f"{name}({ticker})")
