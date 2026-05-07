@@ -234,6 +234,16 @@ try:
 except Exception:
     st.dataframe(df_sum, use_container_width=True)
 
+# 儲存按鈕
+now_str = datetime.now().strftime("%Y-%m-%d_%H%M")
+csv = df_sum.to_csv(index=False, encoding="utf-8-sig")
+st.download_button(
+    label="💾 儲存監控表格（CSV）",
+    data=csv,
+    file_name=f"jason_monitor_{now_str}.csv",
+    mime="text/csv",
+)
+
 valid_tickers = [r["代碼"] for r in summary_data]
 selected = st.selectbox("🔍 選擇詳細分析對象", options=valid_tickers,
                         format_func=lambda x: f"{x} {active_watchlist[x]}")
