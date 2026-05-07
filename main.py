@@ -171,10 +171,6 @@ with st.sidebar:
             if c2.button("✕", key=f"del_{t}"):
                 del st.session_state.extra_tickers[t]
                 save_extra_to_url()
-                # 從已選清單移除並儲存
-                new_full = {**WATCHLIST, **st.session_state.extra_tickers}
-                current_selected = get_saved_selected(new_full)
-                save_selected_to_url(current_selected)
                 fetch_data.clear()
                 st.rerun()
 
