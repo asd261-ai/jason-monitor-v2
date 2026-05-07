@@ -10,8 +10,12 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="Jason's Tactical Monitor v2.0", layout="wide")
+
+# 每 5 分鐘自動刷新一次（300,000 ms）
+st_autorefresh(interval=300_000, key="autorefresh")
 
 # =========================
 # 1. 核心參數
@@ -105,38 +109,35 @@ with st.sidebar:
             ct = st.number_input("成本", value=float(DEFAULT_POSITIONS.get(ticker, {}).get("cost", 0.0)), key=f"ct_{ticker}")
         positions[ticker] = {"shares": sh, "cost": ct}
     st.divider()
-    load_btn = st.button("🔄 載入 / 更新資料", type="primary", use_container_width=True)
+    st.caption("⏱️ 每 5 分鐘自動更新")
+    manual_refresh = st.button("🔄 立即更新", type="primary", use_container_width=True)
 
-if not load_btn and "summary_data" not in st.session_state:
-    st.info("請點擊左側「🔄 載入 / 更新資料」按鈕開始。")
-    st.stop()
+# 手動更新時清除快取
+if manual_refresh:
+    fetch_data.clear()
 
-if load_btn:
-    summary_data, failed = [], []
-    progress = st.progress(0, text="載入中...")
-    for i, (ticker, name) in enumerate(WATCHLIST.items()):
-        progress.progress((i + 1) / len(WATCHLIST), text=f"載入 {name}...")
-        raw = fetch_data(ticker)
-        if raw.empty:
-            failed.append(f"{name}({ticker})")
-            continue
-        df  = technical_analysis(raw)
-        sig = get_signal(df)
-        curr_p = scalar(df.iloc[-1]['Close'])
-        pnl = (curr_p - positions[ticker]['cost']) * positions[ticker]['shares'] \
-              if positions[ticker]['cost'] > 0 else 0
-        summary_data.append({
-            "代碼": ticker, "名稱": name,
-            "現價": round(curr_p, 2), "評分": sig['score'],
-            "趨勢": sig['status'], "支撐": sig['support'],
-            "壓力": sig['resistance'], "預估損益": int(pnl),
-            "戰術理由": sig['reason']
-        })
-    progress.empty()
-    st.session_state["summary_data"] = summary_data
-    st.session_state["failed"] = failed
-
-summary_data = st.session_state.get("summary_data", [])
+# 自動載入（含進度條）
+summary_data, failed = [], []
+progress = st.progress(0, text="載入資料中...")
+for i, (ticker, name) in enumerate(WATCHLIST.items()):
+    progress.progress((i + 1) / len(WATCHLIST), text=f"載入 {name}...")
+    raw = fetch_data(ticker)
+    if raw.empty:
+        failed.append(f"{name}({ticker})")
+        continue
+    df  = technical_analysis(raw)
+    sig = get_signal(df)
+    curr_p = scalar(df.iloc[-1]['Close'])
+    pnl = (curr_p - positions[ticker]['cost']) * positions[ticker]['shares'] \
+          if positions[ticker]['cost'] > 0 else 0
+    summary_data.append({
+        "代碼": ticker, "名稱": name,
+        "現價": round(curr_p, 2), "評分": sig['score'],
+        "趨勢": sig['status'], "支撐": sig['support'],
+        "壓力": sig['resistance'], "預估損益": int(pnl),
+        "戰術理由": sig['reason']
+    })
+progress.empty()
 failed       = st.session_state.get("failed", [])
 
 if failed:
