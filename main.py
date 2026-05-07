@@ -213,21 +213,38 @@ with st.sidebar:
     # 從 URL 讀取已儲存的監控清單
     saved_list = get_saved_selected(full_watchlist)
 
-    # 股票選擇
-    st.header("📋 股票選擇")
-    selected_tickers = st.multiselect(
-        "選擇要監控的股票",
-        options=list(full_watchlist.keys()),
-        default=saved_list,
-        format_func=lambda x: f"{full_watchlist[x]} ({x})"
-    )
-    if not selected_tickers:
-        selected_tickers = list(full_watchlist.keys())
+    # 編輯模式 toggle
+    if "editing_watchlist" not in st.session_state:
+        st.session_state.editing_watchlist = False
 
-    save_list_btn = st.button("💾 儲存監控清單", use_container_width=True)
-    if save_list_btn:
-        st.query_params["selected"] = ",".join(selected_tickers)
-        st.success("✅ 監控清單已儲存！")
+    # 股票選擇標題列
+    h1, h2 = st.columns([3, 1])
+    h1.header("📋 股票選擇")
+    if h2.button("✏️ 編輯" if not st.session_state.editing_watchlist else "✕ 收起",
+                 use_container_width=True):
+        st.session_state.editing_watchlist = not st.session_state.editing_watchlist
+        st.rerun()
+
+    if st.session_state.editing_watchlist:
+        # 編輯模式：顯示 multiselect
+        selected_tickers = st.multiselect(
+            "選擇要監控的股票",
+            options=list(full_watchlist.keys()),
+            default=saved_list,
+            format_func=lambda x: f"{full_watchlist[x]} ({x})"
+        )
+        if not selected_tickers:
+            selected_tickers = list(full_watchlist.keys())
+
+        if st.button("💾 儲存監控清單", type="primary", use_container_width=True):
+            st.query_params["selected"] = ",".join(selected_tickers)
+            st.session_state.editing_watchlist = False
+            st.rerun()
+    else:
+        # 收起模式：顯示精簡清單
+        selected_tickers = saved_list
+        for t in selected_tickers:
+            st.caption(f"• {full_watchlist.get(t, t)} ({t})")
 
     # 自訂股票管理（可移除）
     if st.session_state.extra_tickers:
