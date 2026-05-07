@@ -101,11 +101,26 @@ st.title("🛡️ Jason 台股最強戰術儀表板")
 st.caption(f"更新時間：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 with st.sidebar:
+    # 從 URL query params 讀取已儲存的額外股票
+    # 格式：?extra=2454.TW|聯發科,0050.TW|元大台灣50
+    if "extra_tickers" not in st.session_state:
+        raw_extra = st.query_params.get("extra", "")
+        extra = {}
+        if raw_extra:
+            for item in raw_extra.split(","):
+                parts = item.split("|")
+                if len(parts) == 2:
+                    extra[parts[0]] = parts[1]
+                elif len(parts) == 1 and parts[0]:
+                    extra[parts[0]] = parts[0]
+        st.session_state.extra_tickers = extra
+
+    def save_extra_to_url():
+        val = ",".join(f"{t}|{n}" for t, n in st.session_state.extra_tickers.items())
+        st.query_params["extra"] = val if val else ""
+
     # 動態新增股票
     st.header("➕ 新增股票")
-    if "extra_tickers" not in st.session_state:
-        st.session_state.extra_tickers = {}  # {ticker: name}
-
     col1, col2 = st.columns([2, 1])
     with col1:
         new_ticker = st.text_input("代碼", placeholder="e.g. 2454.TW", label_visibility="collapsed")
@@ -115,23 +130,24 @@ with st.sidebar:
     if add_btn and new_ticker:
         t = new_ticker.strip().upper()
         if t not in WATCHLIST and t not in st.session_state.extra_tickers:
-            # 驗證 ticker
-            test = yf.download(t, period="3d", progress=False)
-            if isinstance(test.columns, pd.MultiIndex):
-                test = test.droplevel(1, axis=1)
+            with st.spinner(f"驗證 {t}..."):
+                test = yf.download(t, period="3d", progress=False)
+                if isinstance(test.columns, pd.MultiIndex):
+                    test = test.droplevel(1, axis=1)
             if not test.empty:
-                # 嘗試取得股票名稱
                 try:
                     info = yf.Ticker(t).info
                     name = info.get("shortName") or info.get("longName") or t
                 except Exception:
                     name = t
                 st.session_state.extra_tickers[t] = name
+                save_extra_to_url()
                 fetch_data.clear()
-                st.success(f"已新增 {name} ({t})")
+                st.success(f"已新增 {name} ({t})，已儲存至網址")
+                st.rerun()
             else:
-                st.error(f"找不到 {t}，請確認代碼格式（台股加 .TW 或 .TWO）")
-        elif t in WATCHLIST or t in st.session_state.extra_tickers:
+                st.error(f"找不到 {t}，請確認代碼格式")
+        else:
             st.warning("此股票已在清單中")
 
     # 顯示已新增的股票，可刪除
@@ -141,6 +157,7 @@ with st.sidebar:
             c1.caption(f"{n} ({t})")
             if c2.button("✕", key=f"del_{t}"):
                 del st.session_state.extra_tickers[t]
+                save_extra_to_url()
                 fetch_data.clear()
                 st.rerun()
 
