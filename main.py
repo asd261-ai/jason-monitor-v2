@@ -18,8 +18,8 @@ st.set_page_config(page_title="Jason's Tactical Monitor v2.0", layout="wide")
 # =========================
 WATCHLIST = {
     "8028.TW":  "昇陽半導體",
-    "8086.TW":  "宏捷科",
-    "3680.TW":  "家登",
+    "8086.TWO": "宏捷科",
+    "3680.TWO": "家登",
     "6213.TW":  "聯茂",
     "2330.TW":  "台積電",
     "8069.TWO": "元太",
