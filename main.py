@@ -119,6 +119,14 @@ with st.sidebar:
         val = ",".join(f"{t}|{n}" for t, n in st.session_state.extra_tickers.items())
         st.query_params["extra"] = val if val else ""
 
+    def save_selected_to_url(tickers):
+        st.query_params["selected"] = ",".join(tickers)
+
+    def get_saved_selected(full_wl):
+        saved = st.query_params.get("selected", "")
+        lst = saved.split(",") if saved else list(full_wl.keys())
+        return [t for t in lst if t in full_wl] or list(full_wl.keys())
+
     # 動態新增股票
     st.header("➕ 新增股票")
     col1, col2 = st.columns([2, 1])
@@ -142,8 +150,13 @@ with st.sidebar:
                     name = t
                 st.session_state.extra_tickers[t] = name
                 save_extra_to_url()
+                # 自動加入已選清單並儲存
+                new_full = {**WATCHLIST, **st.session_state.extra_tickers}
+                current_selected = get_saved_selected(new_full)
+                if t not in current_selected:
+                    current_selected.append(t)
+                save_selected_to_url(current_selected)
                 fetch_data.clear()
-                st.success(f"已新增 {name} ({t})，已儲存至網址")
                 st.rerun()
             else:
                 st.error(f"找不到 {t}，請確認代碼格式")
@@ -158,6 +171,10 @@ with st.sidebar:
             if c2.button("✕", key=f"del_{t}"):
                 del st.session_state.extra_tickers[t]
                 save_extra_to_url()
+                # 從已選清單移除並儲存
+                new_full = {**WATCHLIST, **st.session_state.extra_tickers}
+                current_selected = get_saved_selected(new_full)
+                save_selected_to_url(current_selected)
                 fetch_data.clear()
                 st.rerun()
 
@@ -167,12 +184,7 @@ with st.sidebar:
     full_watchlist = {**WATCHLIST, **st.session_state.extra_tickers}
 
     # 從 URL 讀取已儲存的監控清單
-    saved_selected = st.query_params.get("selected", "")
-    saved_list = saved_selected.split(",") if saved_selected else list(full_watchlist.keys())
-    # 過濾掉已不存在的 ticker
-    saved_list = [t for t in saved_list if t in full_watchlist]
-    if not saved_list:
-        saved_list = list(full_watchlist.keys())
+    saved_list = get_saved_selected(full_watchlist)
 
     # 股票選擇
     st.header("📋 股票選擇")
