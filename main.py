@@ -196,6 +196,27 @@ def generate_analysis(df, sig):
 
     return situation, trend, rec
 
+def confidence_score(df, sig):
+    curr = df.iloc[-1]
+    prev = df.iloc[-2] if len(df) >= 2 else curr
+    rsi  = scalar(curr['RSI'])
+    hist = scalar(curr['Hist'])
+    ph   = scalar(prev['Hist'])
+    ma5  = scalar(curr['MA5'])
+    ma10 = scalar(curr['MA10'])
+    ma20 = scalar(curr['MA20'])
+
+    pts = 5.0
+    pts += sig['score'] * 0.7              # 訊號評分：-1.4 ~ +2.8
+    if 45 <= rsi <= 65:   pts += 1.0       # RSI 健康區間，訊號可靠
+    elif rsi > 75 or rsi < 30: pts -= 0.5  # 極端區間，均值回歸風險
+    if hist > 0 and hist > ph:   pts += 0.8  # MACD 正向擴張
+    elif hist < 0 and hist < ph: pts -= 0.8  # MACD 負向擴張
+    if ma5 > ma10 > ma20:   pts += 0.7    # 完整多頭排列
+    elif ma5 < ma10 < ma20: pts -= 0.7    # 完整空頭排列
+
+    return max(1, min(10, round(pts)))
+
 # =========================
 # 3. UI
 # =========================
@@ -429,7 +450,35 @@ if selected:
         st.plotly_chart(fig, use_container_width=True)
 
         situation, trend, recommendation = generate_analysis(full_detail, sig_detail)
+        conf = confidence_score(full_detail, sig_detail)
+
         st.subheader("📋 技術分析摘要")
+
+        # 信心指數
+        if conf >= 8:
+            conf_color, conf_label = "#22c55e", "信心強"
+        elif conf >= 6:
+            conf_color, conf_label = "#84cc16", "信心偏高"
+        elif conf >= 4:
+            conf_color, conf_label = "#f97316", "信心一般"
+        else:
+            conf_color, conf_label = "#ef4444", "信心偏低"
+
+        _, mid, _ = st.columns([1, 2, 1])
+        with mid:
+            st.markdown(f"""
+            <div style='text-align:center; padding:20px; border-radius:14px;
+                        background:{conf_color}18; border:2px solid {conf_color}; margin-bottom:8px'>
+                <div style='font-size:14px; color:#888; margin-bottom:4px'>信心指數</div>
+                <div style='font-size:56px; font-weight:bold; color:{conf_color}; line-height:1'>
+                    {conf}<span style='font-size:24px; color:#aaa'> / 10</span>
+                </div>
+                <div style='font-size:16px; color:{conf_color}; margin-top:6px'>{conf_label}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.progress(conf / 10)
+
+        st.divider()
         c1, c2, c3 = st.columns(3)
         with c1:
             st.markdown("**🔍 目前的現況**")
