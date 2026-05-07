@@ -129,11 +129,9 @@ with st.sidebar:
 
     # 動態新增股票
     st.header("➕ 新增股票")
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        new_ticker = st.text_input("代碼", placeholder="e.g. 2454.TW", label_visibility="collapsed")
-    with col2:
-        add_btn = st.button("新增", use_container_width=True)
+    new_ticker = st.text_input("代碼", placeholder="e.g. 00878.TW", label_visibility="collapsed")
+    new_name   = st.text_input("名稱（選填，留空自動抓）", placeholder="e.g. 國泰永續高股息", label_visibility="collapsed")
+    add_btn = st.button("新增", use_container_width=True)
 
     if add_btn and new_ticker:
         t = new_ticker.strip().upper()
@@ -143,11 +141,14 @@ with st.sidebar:
                 if isinstance(test.columns, pd.MultiIndex):
                     test = test.droplevel(1, axis=1)
             if not test.empty:
-                try:
-                    info = yf.Ticker(t).info
-                    name = info.get("shortName") or info.get("longName") or t
-                except Exception:
-                    name = t
+                if new_name.strip():
+                    name = new_name.strip()
+                else:
+                    try:
+                        info = yf.Ticker(t).info
+                        name = info.get("shortName") or info.get("longName") or t
+                    except Exception:
+                        name = t
                 st.session_state.extra_tickers[t] = name
                 save_extra_to_url()
                 # 自動加入已選清單並儲存
