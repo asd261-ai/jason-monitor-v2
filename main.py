@@ -260,15 +260,31 @@ with st.sidebar:
 
     st.divider()
 
-    # 持股水位
+    # 持股水位 — 從 URL 讀取已儲存的水位
+    # 格式：?positions=8069.TWO:262000:45.2,2330.TW:1000:500
+    saved_pos = {}
+    raw_pos = st.query_params.get("positions", "")
+    if raw_pos:
+        for item in raw_pos.split(","):
+            parts = item.split(":")
+            if len(parts) == 3:
+                saved_pos[parts[0]] = {"shares": int(parts[1]), "cost": float(parts[2])}
+
     st.header("💼 持股水位設定")
     positions = {}
     for ticker in selected_tickers:
         name = full_watchlist[ticker]
+        default_sh = saved_pos.get(ticker, DEFAULT_POSITIONS.get(ticker, {})).get("shares", 0)
+        default_ct = saved_pos.get(ticker, DEFAULT_POSITIONS.get(ticker, {})).get("cost", 0.0)
         with st.expander(f"{name} ({ticker})"):
-            sh = st.number_input("股數", value=int(DEFAULT_POSITIONS.get(ticker, {}).get("shares", 0)), key=f"sh_{ticker}", step=1000)
-            ct = st.number_input("成本", value=float(DEFAULT_POSITIONS.get(ticker, {}).get("cost", 0.0)), key=f"ct_{ticker}")
+            sh = st.number_input("股數", value=int(default_sh), key=f"sh_{ticker}", step=1000)
+            ct = st.number_input("成本", value=float(default_ct), key=f"ct_{ticker}")
         positions[ticker] = {"shares": sh, "cost": ct}
+
+    if st.button("💾 儲存持股水位", use_container_width=True):
+        val = ",".join(f"{t}:{v['shares']}:{v['cost']}" for t, v in positions.items())
+        st.query_params["positions"] = val
+        st.success("✅ 持股水位已儲存！")
 
     st.divider()
     st.caption("⏱️ 每 5 分鐘自動更新")
