@@ -163,17 +163,6 @@ with st.sidebar:
         else:
             st.warning("此股票已在清單中")
 
-    # 顯示已新增的股票，可刪除
-    if st.session_state.extra_tickers:
-        for t, n in list(st.session_state.extra_tickers.items()):
-            c1, c2 = st.columns([3, 1])
-            c1.caption(f"{n} ({t})")
-            if c2.button("✕", key=f"del_{t}"):
-                del st.session_state.extra_tickers[t]
-                save_extra_to_url()
-                fetch_data.clear()
-                st.rerun()
-
     st.divider()
 
     # 合併完整清單
@@ -197,6 +186,18 @@ with st.sidebar:
     if save_list_btn:
         st.query_params["selected"] = ",".join(selected_tickers)
         st.success("✅ 監控清單已儲存！")
+
+    # 自訂股票管理（可移除）
+    if st.session_state.extra_tickers:
+        with st.expander("🗑️ 移除自訂股票"):
+            for t, n in list(st.session_state.extra_tickers.items()):
+                c1, c2 = st.columns([3, 1])
+                c1.caption(f"{n} ({t})")
+                if c2.button("✕", key=f"del_{t}"):
+                    del st.session_state.extra_tickers[t]
+                    save_extra_to_url()
+                    fetch_data.clear()
+                    st.rerun()
 
     st.divider()
 
